@@ -1,0 +1,80 @@
+services:
+  sharelatex:
+    image: pingwin02/sharelatex-arm:full
+    container_name: sharelatex
+    restart: always
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    
+    volumes:
+      - ./sharelatex_data:/var/lib/overleaf
+    
+    networks:
+      - default
+      - dokploy_proxy
+
+    environment:
+      OVERLEAF_APP_NAME: "Overleaf CE (ARM64)"
+      OVERLEAF_MONGO_URL: mongodb://mongo/sharelatex
+      OVERLEAF_REDIS_HOST: redis
+      REDIS_HOST: redis
+
+      # Enable local thumbnails + image conversions
+      ENABLE_CONVERSIONS: "true"
+
+      # Allow signup (email confirmation disabled)
+      EMAIL_CONFIRMATION_DISABLED: "true"
+
+      # --- CONFIGURATION FOR DOKPLOY PROXY ---
+      OVERLEAF_SITE_URL: "https://latex.kapil.app" 
+      OVERLEAF_BEHIND_PROXY: "true"              
+      OVERLEAF_SECURE_COOKIE: "true"           
+  
+
+      # Optional branding
+      OVERLEAF_NAV_TITLE: "Overleaf (Kapil)"
+      OVERLEAF_ADMIN_EMAIL: "admin@kapil.app"
+      
+      # Disable Pro-only sandbox features (MUST for CE!)
+      # SANDBOXED_COMPILES: "false"                  # <--- UNCOMMENTED
+      # DOCKER_RUNNER: "false"                       # <--- UNCOMMENTED
+      # SANDBOXED_COMPILES_SIBLING_CONTAINERS: "false" # <--- UNCOMMENTED
+
+  mongo:
+    image: mongo:6.0
+    container_name: sharelatex-mongo
+    restart: always
+    command: "--replSet overleaf"
+    volumes:
+      - ./mongo_data:/data/db
+      - ./mongodb-init.js:/docker-entrypoint-initdb.d/mongodb-init.js
+    environment:
+      MONGO_INITDB_DATABASE: sharelatex
+    extra_hosts:
+      - "mongo:127.0.0.1"
+    networks: 
+      - default
+    healthcheck:
+      test: echo 'db.stats().ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:6.2
+    container_name: sharelatex-redis
+    restart: always
+    volumes:
+      - ./redis_data:/data
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+  dokploy_proxy:
+    external: true
+    name: dokploy-network
